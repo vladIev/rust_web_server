@@ -2,30 +2,11 @@ use std::{
     fs,
     io::{prelude::*, BufReader},
     net::{TcpListener, TcpStream},
+    thread,
+    time::Duration,
 };
 
-type Request = Vec<String>;
-
-enum HttpStatus {
-    Ok,
-    NotFound,
-}
-
-impl HttpStatus {
-    fn as_u16(&self) -> u16 {
-        match *self {
-            HttpStatus::Ok => 200,
-            HttpStatus::NotFound => 404,
-        }
-    }
-
-    fn as_str(&self) -> &'static str {
-        match *self {
-            HttpStatus::Ok => "OK",
-            HttpStatus::NotFound => "NOT FOUND",
-        }
-    }
-}
+use book_web_server::{*, HttpStatus, RequestType};
 
 fn main() {
     let default_address = "127.0.0.1";
@@ -42,30 +23,18 @@ fn main() {
 fn handle_connection(mut stream: TcpStream) {
     let buf_reader = BufReader::new(&mut stream);
     let request = get_request(buf_reader);
-    let response = if is_root_request(&request) {
-        build_response(HttpStatus::Ok, "pages/hello.html")
-    } else {
-        build_response(HttpStatus::NotFound, "pages/404.html")
+    let response = match get_request_type(&request) {
+        RequestType::Root => build_response(HttpStatus::Ok, "pages/hello.html"),
+        RequestType::Sleep => {
+            thread::sleep(Duration::from_secs(5));
+            build_response(HttpStatus::Ok, "pages/hello.html")
+        },
+        RequestType::Unknown => build_response(HttpStatus::NotFound, "pages/404.html")
     };
     stream.write_all(response.as_bytes()).unwrap();
 }
 
-fn get_request<R: Read>(buf_reader: BufReader<R>) -> Request {
-    buf_reader
-        .lines()
-        .map(|result| result.unwrap())
-        .take_while(|line| !line.is_empty())
-        .collect()
-}
 
-fn is_root_request(request: &Request) -> bool {
-    let request_line = get_request_line(request);
-    request_line == "GET / HTTP/1.1"
-}
-
-fn get_request_line(request: &Request) -> &str {
-    &request[0]
-}
 
 fn build_response(status_code: HttpStatus, page_path: &str) -> String {
     let status_line = format!("HTTP/1.1 {} {}", status_code.as_u16(), status_code.as_str());
