@@ -6,17 +6,23 @@ use std::{
     time::Duration,
 };
 
-use book_web_server::{*, HttpStatus, RequestType};
+mod thread_pool;
+use thread_pool::ThreadPool;
+
+use book_web_server::{HttpStatus, RequestType, *};
 
 fn main() {
     let default_address = "127.0.0.1";
     let default_port = 7878;
     let listener = TcpListener::bind(format!("{default_address}:{default_port}")).unwrap();
+    let pool = ThreadPool::new(4);
 
     for stream in listener.incoming() {
         let stream = stream.unwrap();
 
-        handle_connection(stream);
+        pool.execute(|| {
+            handle_connection(stream);
+        });
     }
 }
 
@@ -28,13 +34,12 @@ fn handle_connection(mut stream: TcpStream) {
         RequestType::Sleep => {
             thread::sleep(Duration::from_secs(5));
             build_response(HttpStatus::Ok, "pages/hello.html")
-        },
-        RequestType::Unknown => build_response(HttpStatus::NotFound, "pages/404.html")
+        }
+        RequestType::Unknown => build_response(HttpStatus::NotFound, "pages/404.html"),
     };
     stream.write_all(response.as_bytes()).unwrap();
+    stream.flush().unwrap();
 }
-
-
 
 fn build_response(status_code: HttpStatus, page_path: &str) -> String {
     let status_line = format!("HTTP/1.1 {} {}", status_code.as_u16(), status_code.as_str());
